@@ -1,5 +1,5 @@
 package com.example.rgb_camera2api2
-//闪光灯22
+//闪光灯+ISO2000
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
@@ -13,7 +13,6 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.params.RggbChannelVector
 import android.media.MediaRecorder
-import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -22,6 +21,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.provider.MediaStore
 import android.util.Log
+import android.util.Range
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView
@@ -30,7 +30,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -104,10 +103,20 @@ class MainActivity : AppCompatActivity() {
                 addTarget(previewSurface)
                 addTarget(recordSurface)
                 applyColorCorrection(this)
-                // --- 新增功能：开启闪光灯 ---
+
+                // --- 新增：处理闪光灯和ISO的冲突 ---
                 val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
-                if (characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true) {
+                val flashAvailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+
+                if (flashAvailable) {
+                    // 优先开启闪光灯，这需要自动曝光模式
+                    set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                     set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
+                    Log.d(TAG, "Flash enabled, manual ISO will be ignored.")
+                } else {
+                    // 如果没有闪光灯，则尝试设置手动ISO
+                    Log.d(TAG, "Flash not available, attempting to set manual ISO.")
+                    applyManualSensorSettings(this)
                 }
             }
 
@@ -159,7 +168,6 @@ class MainActivity : AppCompatActivity() {
             val captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(previewSurface)
                 applyColorCorrection(this)
-                // --- 新增功能：确保预览时闪光灯是关闭的 ---
                 set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
             }
 
@@ -271,6 +279,35 @@ class MainActivity : AppCompatActivity() {
         val colorGains = RggbChannelVector(1.0f, 3.0f, 3.0f, 18.0f)
         builder.set(CaptureRequest.COLOR_CORRECTION_GAINS, colorGains)
     }
+
+    // --- 新增：设置手动感光度和曝光的方法 ---
+    private fun applyManualSensorSettings(builder: CaptureRequest.Builder) {
+        val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
+        val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+        if (capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) != true) {
+            Log.w(TAG, "Manual sensor control is not supported.")
+            return
+        }
+
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+
+        val isoRange = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
+        val isoValue = 2000
+        if (isoRange?.contains(isoValue) == true) {
+            builder.set(CaptureRequest.SENSOR_SENSITIVITY, isoValue)
+        } else {
+            Log.w(TAG, "ISO 2000 is not supported. Range: $isoRange")
+        }
+
+        val exposureTimeRange = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
+        val exposureTimeValue = 33000000L // 约 30fps
+        if (exposureTimeRange?.contains(exposureTimeValue) == true) {
+            builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureTimeValue)
+        } else {
+            Log.w(TAG, "Default exposure time is not supported.")
+        }
+    }
+
 
     private fun closePreviewSession() {
         captureSession?.close()
