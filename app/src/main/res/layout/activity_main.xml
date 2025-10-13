@@ -24,19 +24,17 @@
             android:paddingStart="8dp"
             android:paddingEnd="8dp">
 
-            <!-- 关键修改：使用 MaterialButton 并添加描边样式 -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/no_gain_button"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="无增益"
+                android:text="无增益\nNo Gain"
                 android:textColor="@android:color/white"
                 android:textSize="12sp"
                 app:strokeColor="@android:color/darker_gray" />
 
-            <!-- 关键修改：使用 MaterialButton 并添加描边样式 -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/reset_gain_button"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
@@ -44,7 +42,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:text="重置增益"
+                android:text="重置增益\nReset"
                 android:textColor="@android:color/white"
                 android:textSize="12sp"
                 app:strokeColor="@android:color/darker_gray" />
@@ -116,7 +114,7 @@
         android:background="#80000000"
         android:gravity="center"
         android:padding="8dp"
-        android:text="在开始录制前请将手指贴紧镜头与闪光灯\n(Place finger close to lens &amp; flash before recording)\n\n（闪光灯开启后将强制使用自动ISO）\n(Auto ISO will be forced when flash is on)"
+        android:text="在开始录制前请将手指贴紧镜头与闪光灯\nPlace finger close to lens &amp; flash before recording\n闪光灯开启后将强制使用自动ISO\nAuto ISO will be forced when flash is on"
         android:textColor="@android:color/white"
         android:textSize="12sp"
         app:layout_constraintBottom_toTopOf="@id/timer_text"
@@ -142,14 +140,13 @@
         app:layout_constraintStart_toStartOf="parent"
         tools:visibility="visible" />
 
-    <!-- 关键修改：使用 MaterialButton 并添加描边样式 -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/record_button"
         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="32dp"
-        android:text="录制"
+        android:text="录制\nRecord"
         android:textColor="@android:color/white"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
