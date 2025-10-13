@@ -1,5 +1,5 @@
 package com.example.rgb_camera2api2
-//闪光灯+ISO2000
+
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
@@ -19,13 +19,16 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Range
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView
+import android.view.View
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -40,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     // --- UI 控件 ---
     private lateinit var textureView: TextureView
     private lateinit var recordButton: Button
+    private lateinit var timerTextView: TextView
 
     // --- 相机相关变量 ---
     private lateinit var cameraManager: CameraManager
@@ -56,6 +60,20 @@ class MainActivity : AppCompatActivity() {
     private var mediaRecorder: MediaRecorder? = null
     private val videoSize = Size(176, 144)
     private var videoUri: Uri? = null
+
+    // --- 计时器相关变量 ---
+    private val timerHandler = Handler(Looper.getMainLooper())
+    private var startTime = 0L
+    private val timerRunnable = object : Runnable {
+        override fun run() {
+            val millis = System.currentTimeMillis() - startTime
+            val seconds = (millis / 1000).toInt()
+            val minutes = seconds / 60
+            val displaySeconds = seconds % 60
+            timerTextView.text = String.format(Locale.getDefault(), "%02d:%02d", minutes, displaySeconds)
+            timerHandler.postDelayed(this, 1000)
+        }
+    }
 
     // --- 常量 ---
     private val TAG = "Camera2App"
@@ -76,6 +94,7 @@ class MainActivity : AppCompatActivity() {
 
         textureView = findViewById(R.id.texture_view)
         recordButton = findViewById(R.id.record_button)
+        timerTextView = findViewById(R.id.timer_text)
 
         recordButton.setOnClickListener {
             if (isRecording) {
@@ -104,18 +123,13 @@ class MainActivity : AppCompatActivity() {
                 addTarget(recordSurface)
                 applyColorCorrection(this)
 
-                // --- 新增：处理闪光灯和ISO的冲突 ---
                 val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
                 val flashAvailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
 
                 if (flashAvailable) {
-                    // 优先开启闪光灯，这需要自动曝光模式
                     set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                     set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
-                    Log.d(TAG, "Flash enabled, manual ISO will be ignored.")
                 } else {
-                    // 如果没有闪光灯，则尝试设置手动ISO
-                    Log.d(TAG, "Flash not available, attempting to set manual ISO.")
                     applyManualSensorSettings(this)
                 }
             }
@@ -128,9 +142,14 @@ class MainActivity : AppCompatActivity() {
                             session.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
                             mediaRecorder?.start()
                             isRecording = true
-                            runOnUiThread { recordButton.text = "停止" }
+                            runOnUiThread {
+                                recordButton.text = "停止"
+                                timerTextView.visibility = View.VISIBLE
+                                startTime = System.currentTimeMillis()
+                                timerHandler.post(timerRunnable)
+                            }
                         } catch (e: Exception) {
-                            Log.e(TAG, "开始录制失败", e)
+                            Log.e(TAG, "开始录制请求失败", e)
                         }
                     }
 
@@ -145,8 +164,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopRecordingVideo() {
+        if (!isRecording) return
         isRecording = false
+
+        timerHandler.removeCallbacks(timerRunnable)
+        runOnUiThread {
+            timerTextView.visibility = View.GONE
+            timerTextView.text = "00:00"
+        }
+
         try {
+            // --- 关键修复：确保按正确顺序停止和重置 ---
+            captureSession?.stopRepeating()
+            captureSession?.abortCaptures()
             mediaRecorder?.stop()
             mediaRecorder?.reset()
         } catch (e: Exception) {
@@ -205,7 +235,6 @@ class MainActivity : AppCompatActivity() {
 
         videoUri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
         if (videoUri == null) {
-            Log.e(TAG, "创建 MediaStore URI 失败")
             throw IOException("创建 MediaStore URI 失败")
         }
 
@@ -280,12 +309,10 @@ class MainActivity : AppCompatActivity() {
         builder.set(CaptureRequest.COLOR_CORRECTION_GAINS, colorGains)
     }
 
-    // --- 新增：设置手动感光度和曝光的方法 ---
     private fun applyManualSensorSettings(builder: CaptureRequest.Builder) {
         val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
         val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
         if (capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) != true) {
-            Log.w(TAG, "Manual sensor control is not supported.")
             return
         }
 
@@ -295,16 +322,12 @@ class MainActivity : AppCompatActivity() {
         val isoValue = 2000
         if (isoRange?.contains(isoValue) == true) {
             builder.set(CaptureRequest.SENSOR_SENSITIVITY, isoValue)
-        } else {
-            Log.w(TAG, "ISO 2000 is not supported. Range: $isoRange")
         }
 
         val exposureTimeRange = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
-        val exposureTimeValue = 33000000L // 约 30fps
+        val exposureTimeValue = 33000000L
         if (exposureTimeRange?.contains(exposureTimeValue) == true) {
             builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureTimeValue)
-        } else {
-            Log.w(TAG, "Default exposure time is not supported.")
         }
     }
 

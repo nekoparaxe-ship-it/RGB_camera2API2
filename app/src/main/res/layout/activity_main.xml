@@ -4,20 +4,54 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1C1C1E"
-    tools:context=".MainActivity">
+    android:background="#121212"
+    tools:context=".MainActivity">1
 
     <TextureView
         android:id="@+id/texture_view"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@+id/record_button"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintDimensionRatio="11:9"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintWidth_percent="0.9"
-        app:layout_constraintDimensionRatio="W,11:9"
-        />
+        app:layout_constraintWidth_percent="0.9" />
+
+    <!-- 新增：提示信息文本 -->
+    <TextView
+        android:id="@+id/instruction_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:background="#80000000"
+        android:gravity="center"
+        android:padding="8dp"
+        android:text="在开始录制前请将手指贴紧镜头与闪光灯\n(Place finger close to lens &amp; flash before recording)\n\n（闪光灯开启后将强制使用自动ISO）\n(Auto ISO will be forced when flash is on)"
+        android:textColor="@android:color/white"
+        android:textSize="12sp"
+        app:layout_constraintBottom_toTopOf="@id/timer_text"
+        app:layout_constraintEnd_toEndOf="@id/texture_view"
+        app:layout_constraintStart_toStartOf="@id/texture_view" />
+
+    <TextView
+        android:id="@+id/timer_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:background="#80000000"
+        android:paddingLeft="12dp"
+        android:paddingTop="4dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="4dp"
+        android:text="00:00"
+        android:textColor="@android:color/white"
+        android:textSize="18sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/record_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        tools:visibility="visible" />
 
     <Button
         android:id="@+id/record_button"
