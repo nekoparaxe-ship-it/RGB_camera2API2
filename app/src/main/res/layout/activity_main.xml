@@ -6,17 +6,23 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <!-- TextureView 用于显示相机预览画面 -->
+    <!-- 关键修改：
+         1. 使用 app:layout_constraintWidth_percent="0.9" 让预览宽度变为屏幕的90%，而不是占满全宽。
+         2. 使用 app:layout_constraintDimensionRatio="W,11:9" 根据新的宽度和视频的宽高比(176:144 -> 11:9)自动计算高度。
+         3. 预览视图将自动在屏幕上方居中。
+    -->
     <TextureView
         android:id="@+id/texture_view"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/record_button"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintWidth_percent="0.9"
+        app:layout_constraintDimensionRatio="W,11:9"
+        />
 
-    <!-- Button 用于开始和停止录制 -->
     <Button
         android:id="@+id/record_button"
         android:layout_width="wrap_content"
@@ -28,3 +34,4 @@
         app:layout_constraintStart_toStartOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
+
