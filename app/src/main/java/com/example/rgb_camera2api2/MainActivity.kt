@@ -32,9 +32,11 @@ import android.view.TextureView
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.io.IOException
@@ -53,7 +55,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var blueGainInput: EditText
     private lateinit var noGainButton: Button
     private lateinit var resetGainButton: Button
-    private lateinit var countdownTextView: TextView // 新增
+    private lateinit var countdownTextView: TextView
+    private lateinit var manualButton: ImageButton // 新增
 
 
     // --- 相机相关变量 ---
@@ -111,7 +114,8 @@ class MainActivity : AppCompatActivity() {
         blueGainInput = findViewById(R.id.blue_gain_input)
         noGainButton = findViewById(R.id.no_gain_button)
         resetGainButton = findViewById(R.id.reset_gain_button)
-        countdownTextView = findViewById(R.id.countdown_text) // 初始化
+        countdownTextView = findViewById(R.id.countdown_text)
+        manualButton = findViewById(R.id.manual_button) // 初始化
 
 
         recordButton.setOnClickListener {
@@ -132,6 +136,10 @@ class MainActivity : AppCompatActivity() {
             redGainInput.setText("1.0")
             greenGainInput.setText("3.0")
             blueGainInput.setText("18.0")
+        }
+
+        manualButton.setOnClickListener {
+            showManualDialog()
         }
 
 
@@ -185,10 +193,9 @@ class MainActivity : AppCompatActivity() {
                         captureSession = session
                         try {
                             session.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
-                            // --- 修改：不立即开始录制，而是启动倒计时 ---
                             runOnUiThread {
-                                recordButton.isEnabled = false // 倒计时期间禁用按钮
-                                object : CountDownTimer(2100, 1000) { // 2.1秒，确保显示"1"
+                                recordButton.isEnabled = false
+                                object : CountDownTimer(2100, 1000) {
                                     override fun onTick(millisUntilFinished: Long) {
                                         countdownTextView.visibility = View.VISIBLE
                                         countdownTextView.text = "${(millisUntilFinished / 1000)}"
@@ -408,6 +415,40 @@ class MainActivity : AppCompatActivity() {
         blueGainInput.isEnabled = enabled
         noGainButton.isEnabled = enabled
         resetGainButton.isEnabled = enabled
+    }
+
+    private fun showManualDialog() {
+        val manualText = """
+            1. RGB 增益调节 (RGB Gain Adjustment):
+            - 在顶部的 R, G, B 输入框中输入数值，可以实时调整预览和录制视频的色彩增益。
+            - Enter values in the R, G, B input fields at the top to adjust the color gain for the preview and recorded video in real-time.
+            - 无增益 (No Gain): 将所有增益设为1.0，显示接近原始的画面。
+            - Sets all gains to 1.0 to show a near-original image.
+            - 重置增益 (Reset Gain): 恢复为默认的特殊色彩效果 (R:1, G:3, B:18)。
+            - Resets to the default special color effect (R:1, G:3, B:18).
+
+            2. 录制视频 (Recording Video):
+            - 点击“录制”按钮后，将有2秒倒计时。倒计时结束后正式开始录制。
+            - After tapping the "Record" button, there will be a 2-second countdown before recording officially begins.
+            - 录制期间，闪光灯会开启（如果设备支持）。
+            - The flash will turn on during recording (if supported by the device).
+            - 录制好的视频会自动保存到手机相册的 "Movies" 文件夹中。
+            - The recorded video is automatically saved to the "Movies" folder in your phone's gallery.
+
+            3. 闪光灯与ISO (Flash & ISO):
+            - 为了保证画面亮度，开启闪光灯时，相机必须使用自动ISO。
+            - To ensure brightness, the camera must use Auto ISO when the flash is on.
+            - 如果设备不支持闪光灯，程序会尝试将ISO固定在2000。
+            - If the device does not support flash, the app will attempt to fix the ISO at 2000.
+        """.trimIndent()
+
+        AlertDialog.Builder(this)
+            .setTitle("使用手册 / User Manual")
+            .setMessage(manualText)
+            .setPositiveButton("好的 / OK") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
     }
 
     private fun closePreviewSession() {
