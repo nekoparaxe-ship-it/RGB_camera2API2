@@ -1,5 +1,5 @@
 package com.example.rgb_camera2api2
-//闪光灯
+//闪光灯22
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
