@@ -107,7 +107,6 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintWidth_percent="0.9" />
 
-    <!-- 新增：倒计时文本 -->
     <TextView
         android:id="@+id/countdown_text"
         android:layout_width="wrap_content"
@@ -172,6 +171,20 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:strokeColor="@android:color/white" />
+
+    <!-- 新增：手册按钮 -->
+    <ImageButton
+        android:id="@+id/manual_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="使用手册 / Manual"
+        android:src="@android:drawable/ic_menu_help"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@android:color/white" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
 
