@@ -46,7 +46,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraManager: CameraManager
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
-    private lateinit var captureRequestBuilder: CaptureRequest.Builder
     private var cameraId: String? = null
 
     // --- 线程管理 ---
@@ -57,29 +56,17 @@ class MainActivity : AppCompatActivity() {
     private var isRecording = false
     private var mediaRecorder: MediaRecorder? = null
     private val videoSize = Size(176, 144)
-    private lateinit var videoFile: File // 用于旧版安卓系统
-    private var videoUri: Uri? = null // 用于新版安卓系统 (API 29+)
+    private var videoUri: Uri? = null
 
     // --- 常量 ---
     private val TAG = "Camera2App"
 
     private val activityResultLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-            val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
-
-            if (deniedPermissions.isEmpty()) {
-                setupAndOpenCamera()
+            if (permissions.values.all { it }) {
+                openCamera()
             } else {
-                val message = "以下权限被拒绝，应用无法运行:\n" +
-                        deniedPermissions.joinToString("\n") { permission ->
-                            when (permission) {
-                                Manifest.permission.CAMERA -> "- 相机"
-                                Manifest.permission.RECORD_AUDIO -> "- 麦克风"
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE -> "- 存储空间"
-                                else -> "- 未知权限"
-                            }
-                        }
-                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "需要所有权限才能使用本应用", Toast.LENGTH_SHORT).show()
                 finish()
             }
         }
@@ -93,52 +80,33 @@ class MainActivity : AppCompatActivity() {
 
         recordButton.setOnClickListener {
             if (isRecording) {
-                stopRecording()
+                stopRecordingVideo()
             } else {
-                startRecording()
+                startRecordingVideo()
             }
         }
     }
 
-    private fun checkAndRequestPermissions() {
-        val permissionsToRequest = mutableListOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        )
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-            permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
-
-        if (permissionsToRequest.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
-            setupAndOpenCamera()
-        } else {
-            activityResultLauncher.launch(permissionsToRequest.toTypedArray())
-        }
-    }
-
-    private fun startRecording() {
+    private fun startRecordingVideo() {
         if (cameraDevice == null || !textureView.isAvailable) return
 
         try {
-            closeCaptureSession()
-            if (!setupMediaRecorder()) {
-                runOnUiThread { Toast.makeText(this, "设置录制器失败", Toast.LENGTH_LONG).show() }
-                return
-            }
+            closePreviewSession()
+            setupMediaRecorder()
 
-            val texture = textureView.surfaceTexture!!
-            texture.setDefaultBufferSize(videoSize.width, videoSize.height)
+            val texture = textureView.surfaceTexture!!.apply {
+                setDefaultBufferSize(videoSize.width, videoSize.height)
+            }
             val previewSurface = Surface(texture)
             val recordSurface = mediaRecorder!!.surface
 
-            captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
-            captureRequestBuilder.addTarget(previewSurface)
-            captureRequestBuilder.addTarget(recordSurface)
+            val captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+                addTarget(previewSurface)
+                addTarget(recordSurface)
+                applyColorCorrection(this)
+            }
 
-            applyColorCorrection(captureRequestBuilder)
-
-            cameraDevice?.createCaptureSession(
-                listOf(previewSurface, recordSurface),
+            cameraDevice!!.createCaptureSession(listOf(previewSurface, recordSurface),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         captureSession = session
@@ -148,223 +116,145 @@ class MainActivity : AppCompatActivity() {
                             isRecording = true
                             runOnUiThread { recordButton.text = "停止" }
                         } catch (e: Exception) {
-                            val errorMsg = "开始录制请求失败"
-                            Log.e(TAG, errorMsg, e)
-                            runOnUiThread { Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show() }
+                            Log.e(TAG, "开始录制失败", e)
                         }
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
-                        val errorMsg = "录制会话配置失败"
-                        Log.e(TAG, errorMsg)
-                        runOnUiThread { Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show() }
+                        Log.e(TAG, "录制会话配置失败")
                     }
-                },
-                backgroundHandler
+                }, backgroundHandler
             )
         } catch (e: Exception) {
-            val errorMsg = "开始录制失败"
-            Log.e(TAG, errorMsg, e)
-            runOnUiThread { Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show() }
+            Log.e(TAG, "启动录制流程失败", e)
         }
     }
 
-    private fun stopRecording() {
+    private fun stopRecordingVideo() {
         isRecording = false
-        runOnUiThread { recordButton.text = "录制" }
         try {
             mediaRecorder?.stop()
             mediaRecorder?.reset()
-            captureSession?.stopRepeating()
-            captureSession?.abortCaptures()
         } catch (e: Exception) {
-            Log.e(TAG, "停止录制时出错", e)
+            Log.e(TAG, "停止录制器时出错", e)
         }
 
-        val savedMessage: String
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // --- 关键修改：在安卓10及以上版本，将视频状态从“待写入”更新为“已完成” ---
-            videoUri?.let { uri ->
-                val values = ContentValues().apply {
-                    put(MediaStore.Video.Media.IS_PENDING, 0)
-                }
-                contentResolver.update(uri, values, null, null)
+        saveVideoToGallery()
+        startPreview()
+    }
+
+    private fun startPreview() {
+        if (cameraDevice == null || !textureView.isAvailable) return
+        try {
+            closePreviewSession()
+            val texture = textureView.surfaceTexture!!.apply {
+                setDefaultBufferSize(videoSize.width, videoSize.height)
             }
-            savedMessage = "视频已保存到相册"
-        } else {
-            MediaScannerConnection.scanFile(this, arrayOf(videoFile.absolutePath), null, null)
-            savedMessage = "视频已保存到: ${videoFile.absolutePath}"
-        }
-        runOnUiThread { Toast.makeText(this, savedMessage, Toast.LENGTH_LONG).show() }
+            val previewSurface = Surface(texture)
+            val captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                addTarget(previewSurface)
+                applyColorCorrection(this)
+            }
 
-        if (cameraDevice != null) {
-            createPreviewSession()
+            cameraDevice!!.createCaptureSession(listOf(previewSurface),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        captureSession = session
+                        try {
+                            session.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
+                            runOnUiThread { recordButton.text = "录制" }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "启动预览失败", e)
+                        }
+                    }
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        Log.e(TAG, "预览会话配置失败")
+                    }
+                }, backgroundHandler
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "创建预览会话失败", e)
         }
     }
 
-    private fun setupMediaRecorder(): Boolean {
-        mediaRecorder = MediaRecorder()
-        mediaRecorder?.apply {
+    private fun setupMediaRecorder() {
+        val fileName = "VIDEO_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.mp4"
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
+                put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+        }
+
+        videoUri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+        if (videoUri == null) {
+            Log.e(TAG, "创建 MediaStore URI 失败")
+            throw IOException("创建 MediaStore URI 失败")
+        }
+
+        mediaRecorder = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this) else MediaRecorder()).apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setVideoSource(MediaRecorder.VideoSource.SURFACE)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // --- 关键修改：在安卓10及以上版本，先创建一个“待写入”的条目 ---
-                val values = ContentValues().apply {
-                    put(MediaStore.Video.Media.DISPLAY_NAME, createVideoFileName())
-                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
-                    put(MediaStore.Video.Media.IS_PENDING, 1) // 标记为待写入
-                }
-                videoUri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
-                if (videoUri == null) {
-                    Log.e(TAG, "创建 MediaStore 条目失败")
-                    return false
-                }
-                val pfd = contentResolver.openFileDescriptor(videoUri!!, "w")
-                if (pfd == null) {
-                    Log.e(TAG, "获取 ParcelFileDescriptor 失败")
-                    return false
-                }
-                setOutputFile(pfd.fileDescriptor)
-            } else {
-                videoFile = createVideoFileLegacy()
-                setOutputFile(videoFile.absolutePath)
-            }
-
+            setOutputFile(contentResolver.openFileDescriptor(videoUri!!, "w")!!.fileDescriptor)
             setVideoEncodingBitRate(1000000)
             setVideoFrameRate(30)
             setVideoSize(videoSize.width, videoSize.height)
             setVideoEncoder(MediaRecorder.VideoEncoder.H264)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            try {
-                prepare()
-            } catch (e: IOException) {
-                Log.e(TAG, "MediaRecorder prepare() 失败", e)
-                return false
-            }
+            prepare()
         }
-        return true
     }
 
-    private fun createVideoFileName(): String {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        return "VIDEO_${timeStamp}.mp4"
-    }
-
-    private fun createVideoFileLegacy(): File {
-        val publicMoviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-        if (!publicMoviesDir.exists()) {
-            publicMoviesDir.mkdirs()
-        }
-        return File(publicMoviesDir, createVideoFileName())
-    }
-
-
-    private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-        override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-            checkAndRequestPermissions()
-        }
-        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
-        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean = true
-        override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
-    }
-
-    private fun setupAndOpenCamera() {
-        cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        try {
-            var foundCompatibleCamera = false
-            for (camId in cameraManager.cameraIdList) {
-                val characteristics = cameraManager.getCameraCharacteristics(camId)
-                if (characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT) continue
-
-                val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: continue
-                if (map.getOutputSizes(MediaRecorder::class.java).contains(videoSize)) {
-                    cameraId = camId
-                    foundCompatibleCamera = true
-                    break
+    private fun saveVideoToGallery() {
+        videoUri?.let { uri ->
+            val values = ContentValues().apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Video.Media.IS_PENDING, 0)
                 }
             }
+            contentResolver.update(uri, values, null, null)
+            runOnUiThread { Toast.makeText(this, "视频已保存到相册", Toast.LENGTH_SHORT).show() }
+        }
+    }
 
-            if (!foundCompatibleCamera) {
-                runOnUiThread { Toast.makeText(this, "未找到支持 176x144 分辨率的摄像头", Toast.LENGTH_LONG).show() }
+    private fun openCamera() {
+        cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        try {
+            val compatibleCameraId = cameraManager.cameraIdList.find {
+                val characteristics = cameraManager.getCameraCharacteristics(it)
+                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+                val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                facing == CameraCharacteristics.LENS_FACING_BACK && map?.getOutputSizes(MediaRecorder::class.java)?.contains(videoSize) == true
+            }
+
+            if (compatibleCameraId == null) {
+                Toast.makeText(this, "未找到兼容的摄像头", Toast.LENGTH_SHORT).show()
                 finish()
                 return
             }
+            cameraId = compatibleCameraId
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
             cameraManager.openCamera(cameraId!!, cameraStateCallback, backgroundHandler)
         } catch (e: CameraAccessException) {
-            val errorMsg = "打开相机失败"
-            Log.e(TAG, errorMsg, e)
-            runOnUiThread { Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show() }
+            Log.e(TAG, "打开相机失败", e)
         }
     }
 
     private val cameraStateCallback = object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
             cameraDevice = camera
-            createPreviewSession()
+            startPreview()
         }
-
         override fun onDisconnected(camera: CameraDevice) {
-            camera.close()
-            cameraDevice = null
+            closeCamera()
         }
-
         override fun onError(camera: CameraDevice, error: Int) {
-            val errorMsg = "相机设备错误: $error"
-            Log.e(TAG, "CameraDevice Error: $error")
-            runOnUiThread { Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show() }
-            camera.close()
-            cameraDevice = null
-            finish()
-        }
-    }
-
-    private fun createPreviewSession() {
-        try {
-            if (cameraDevice == null) {
-                Log.e(TAG, "创建预览失败，cameraDevice为空")
-                return
-            }
-            val surfaceTexture = textureView.surfaceTexture ?: return
-            surfaceTexture.setDefaultBufferSize(videoSize.width, videoSize.height)
-            val previewSurface = Surface(surfaceTexture)
-
-            captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-            captureRequestBuilder.addTarget(previewSurface)
-
-            applyColorCorrection(captureRequestBuilder)
-
-            cameraDevice?.createCaptureSession(
-                listOf(previewSurface),
-                object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        if (cameraDevice == null) return
-                        captureSession = session
-                        try {
-                            session.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
-                        } catch (e: CameraAccessException) {
-                            val errorMsg = "启动预览失败"
-                            Log.e(TAG, errorMsg, e)
-                            runOnUiThread { Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show() }
-                        }
-                    }
-
-                    override fun onConfigureFailed(session: CameraCaptureSession) {
-                        val errorMsg = "预览会话配置失败"
-                        Log.e(TAG, errorMsg)
-                        runOnUiThread { Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show() }
-                    }
-                },
-                backgroundHandler
-            )
-        } catch (e: Exception) {
-            val errorMsg = "创建预览会话失败"
-            Log.e(TAG, errorMsg, e)
-            runOnUiThread { Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show() }
+            Log.e(TAG, "相机设备错误: $error")
+            closeCamera()
         }
     }
 
@@ -375,26 +265,20 @@ class MainActivity : AppCompatActivity() {
         builder.set(CaptureRequest.COLOR_CORRECTION_GAINS, colorGains)
     }
 
-    private fun closeCamera() {
-        try {
-            captureSession?.close()
-            captureSession = null
-            cameraDevice?.close()
-            cameraDevice = null
-            mediaRecorder?.release()
-            mediaRecorder = null
-        } catch (e: Exception) {
-            Log.e(TAG, "关闭相机资源时出错", e)
-        }
-    }
-
-    private fun closeCaptureSession() {
+    private fun closePreviewSession() {
         captureSession?.close()
         captureSession = null
     }
 
+    private fun closeCamera() {
+        closePreviewSession()
+        cameraDevice?.close()
+        cameraDevice = null
+        mediaRecorder?.release()
+        mediaRecorder = null
+    }
+
     private fun startBackgroundThread() {
-        if (backgroundThread != null) return
         backgroundThread = HandlerThread("CameraBackground").also { it.start() }
         backgroundHandler = Handler(backgroundThread!!.looper)
     }
@@ -402,7 +286,7 @@ class MainActivity : AppCompatActivity() {
     private fun stopBackgroundThread() {
         backgroundThread?.quitSafely()
         try {
-            backgroundThread?.join(500)
+            backgroundThread?.join()
             backgroundThread = null
             backgroundHandler = null
         } catch (e: InterruptedException) {
@@ -410,11 +294,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+        override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+            val permissionsToRequest = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+            if (permissionsToRequest.all { ContextCompat.checkSelfPermission(this@MainActivity, it) == PackageManager.PERMISSION_GRANTED }) {
+                openCamera()
+            } else {
+                activityResultLauncher.launch(permissionsToRequest.toTypedArray())
+            }
+        }
+        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean = true
+        override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+    }
+
     override fun onResume() {
         super.onResume()
         startBackgroundThread()
         if (textureView.isAvailable) {
-            checkAndRequestPermissions()
+            surfaceTextureListener.onSurfaceTextureAvailable(textureView.surfaceTexture!!, textureView.width, textureView.height)
         } else {
             textureView.surfaceTextureListener = surfaceTextureListener
         }

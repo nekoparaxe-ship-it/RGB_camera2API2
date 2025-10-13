@@ -4,13 +4,9 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#1C1C1E"
     tools:context=".MainActivity">
 
-    <!-- 关键修改：
-         1. 使用 app:layout_constraintWidth_percent="0.9" 让预览宽度变为屏幕的90%，而不是占满全宽。
-         2. 使用 app:layout_constraintDimensionRatio="W,11:9" 根据新的宽度和视频的宽高比(176:144 -> 11:9)自动计算高度。
-         3. 预览视图将自动在屏幕上方居中。
-    -->
     <TextureView
         android:id="@+id/texture_view"
         android:layout_width="0dp"
