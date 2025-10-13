@@ -1,5 +1,5 @@
 package com.example.rgb_camera2api2
-
+//sgd
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
@@ -36,7 +36,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class 1MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity() {
 
     // --- UI 控件 ---
     private lateinit var textureView: TextureView
@@ -104,6 +104,11 @@ class 1MainActivity : AppCompatActivity() {
                 addTarget(previewSurface)
                 addTarget(recordSurface)
                 applyColorCorrection(this)
+                // --- 新增功能：开启闪光灯 ---
+                val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
+                if (characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true) {
+                    set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
+                }
             }
 
             cameraDevice!!.createCaptureSession(listOf(previewSurface, recordSurface),
@@ -154,6 +159,8 @@ class 1MainActivity : AppCompatActivity() {
             val captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(previewSurface)
                 applyColorCorrection(this)
+                // --- 新增功能：确保预览时闪光灯是关闭的 ---
+                set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
             }
 
             cameraDevice!!.createCaptureSession(listOf(previewSurface),
