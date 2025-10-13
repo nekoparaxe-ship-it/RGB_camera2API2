@@ -5,7 +5,57 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#121212"
-    tools:context=".MainActivity">1
+    tools:context=".MainActivity">
+
+    <!-- 新增：RGB增益调节输入框的容器 -->
+    <LinearLayout
+        android:id="@+id/rgb_gain_layout"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="@id/texture_view"
+        app:layout_constraintEnd_toEndOf="@id/texture_view">
+
+        <EditText
+            android:id="@+id/red_gain_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="R Gain (1.0)"
+            android:inputType="numberDecimal"
+            android:textColor="@android:color/white"
+            android:textColorHint="#CCCCCC"
+            android:backgroundTint="@android:color/holo_red_dark"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/green_gain_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:hint="G Gain (3.0)"
+            android:inputType="numberDecimal"
+            android:textColor="@android:color/white"
+            android:textColorHint="#CCCCCC"
+            android:backgroundTint="@android:color/holo_green_dark"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/blue_gain_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:hint="B Gain (18.0)"
+            android:inputType="numberDecimal"
+            android:textColor="@android:color/white"
+            android:textColorHint="#CCCCCC"
+            android:backgroundTint="@android:color/holo_blue_dark"
+            android:textSize="14sp" />
+    </LinearLayout>
 
     <TextureView
         android:id="@+id/texture_view"
@@ -18,7 +68,6 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintWidth_percent="0.9" />
 
-    <!-- 新增：提示信息文本 -->
     <TextView
         android:id="@+id/instruction_text"
         android:layout_width="0dp"

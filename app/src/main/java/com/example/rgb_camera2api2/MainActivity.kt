@@ -21,6 +21,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.provider.MediaStore
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
 import android.util.Range
 import android.util.Size
@@ -28,6 +30,7 @@ import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,6 +47,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var textureView: TextureView
     private lateinit var recordButton: Button
     private lateinit var timerTextView: TextView
+    private lateinit var redGainInput: EditText
+    private lateinit var greenGainInput: EditText
+    private lateinit var blueGainInput: EditText
 
     // --- 相机相关变量 ---
     private lateinit var cameraManager: CameraManager
@@ -95,6 +101,9 @@ class MainActivity : AppCompatActivity() {
         textureView = findViewById(R.id.texture_view)
         recordButton = findViewById(R.id.record_button)
         timerTextView = findViewById(R.id.timer_text)
+        redGainInput = findViewById(R.id.red_gain_input)
+        greenGainInput = findViewById(R.id.green_gain_input)
+        blueGainInput = findViewById(R.id.blue_gain_input)
 
         recordButton.setOnClickListener {
             if (isRecording) {
@@ -103,6 +112,20 @@ class MainActivity : AppCompatActivity() {
                 startRecordingVideo()
             }
         }
+
+        // --- 新增：监听输入框变化，实时更新预览 ---
+        val textWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (!isRecording) {
+                    startPreview() // 如果不在录制中，则重新启动预览以应用新的增益
+                }
+            }
+        }
+        redGainInput.addTextChangedListener(textWatcher)
+        greenGainInput.addTextChangedListener(textWatcher)
+        blueGainInput.addTextChangedListener(textWatcher)
     }
 
     private fun startRecordingVideo() {
@@ -145,6 +168,7 @@ class MainActivity : AppCompatActivity() {
                             runOnUiThread {
                                 recordButton.text = "停止"
                                 timerTextView.visibility = View.VISIBLE
+                                setGainInputsEnabled(false) // 录制时禁用输入框
                                 startTime = System.currentTimeMillis()
                                 timerHandler.post(timerRunnable)
                             }
@@ -171,10 +195,10 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             timerTextView.visibility = View.GONE
             timerTextView.text = "00:00"
+            setGainInputsEnabled(true) // 停止录制后启用输入框
         }
 
         try {
-            // --- 关键修复：确保按正确顺序停止和重置 ---
             captureSession?.stopRepeating()
             captureSession?.abortCaptures()
             mediaRecorder?.stop()
@@ -305,7 +329,13 @@ class MainActivity : AppCompatActivity() {
     private fun applyColorCorrection(builder: CaptureRequest.Builder) {
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF)
         builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX)
-        val colorGains = RggbChannelVector(1.0f, 3.0f, 3.0f, 18.0f)
+
+        // --- 新增：从输入框读取增益值，如果为空或无效则使用默认值 ---
+        val redGain = redGainInput.text.toString().toFloatOrNull() ?: 1.0f
+        val greenGain = greenGainInput.text.toString().toFloatOrNull() ?: 3.0f
+        val blueGain = blueGainInput.text.toString().toFloatOrNull() ?: 18.0f
+
+        val colorGains = RggbChannelVector(redGain, greenGain, greenGain, blueGain)
         builder.set(CaptureRequest.COLOR_CORRECTION_GAINS, colorGains)
     }
 
@@ -331,6 +361,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setGainInputsEnabled(enabled: Boolean) {
+        redGainInput.isEnabled = enabled
+        greenGainInput.isEnabled = enabled
+        blueGainInput.isEnabled = enabled
+    }
 
     private fun closePreviewSession() {
         captureSession?.close()
