@@ -16,6 +16,7 @@ import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
@@ -52,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var blueGainInput: EditText
     private lateinit var noGainButton: Button
     private lateinit var resetGainButton: Button
+    private lateinit var countdownTextView: TextView // 新增
 
 
     // --- 相机相关变量 ---
@@ -109,6 +111,7 @@ class MainActivity : AppCompatActivity() {
         blueGainInput = findViewById(R.id.blue_gain_input)
         noGainButton = findViewById(R.id.no_gain_button)
         resetGainButton = findViewById(R.id.reset_gain_button)
+        countdownTextView = findViewById(R.id.countdown_text) // 初始化
 
 
         recordButton.setOnClickListener {
@@ -163,8 +166,6 @@ class MainActivity : AppCompatActivity() {
                 addTarget(previewSurface)
                 addTarget(recordSurface)
                 applyColorCorrection(this)
-
-                // --- 新增功能：将帧率目标设为 30 FPS ---
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
 
                 val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
@@ -184,17 +185,36 @@ class MainActivity : AppCompatActivity() {
                         captureSession = session
                         try {
                             session.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
-                            mediaRecorder?.start()
-                            isRecording = true
+                            // --- 修改：不立即开始录制，而是启动倒计时 ---
                             runOnUiThread {
-                                recordButton.text = "停止"
-                                timerTextView.visibility = View.VISIBLE
-                                setGainInputsEnabled(false)
-                                startTime = System.currentTimeMillis()
-                                timerHandler.post(timerRunnable)
+                                recordButton.isEnabled = false // 倒计时期间禁用按钮
+                                object : CountDownTimer(2100, 1000) { // 2.1秒，确保显示"1"
+                                    override fun onTick(millisUntilFinished: Long) {
+                                        countdownTextView.visibility = View.VISIBLE
+                                        countdownTextView.text = "${(millisUntilFinished / 1000)}"
+                                    }
+
+                                    override fun onFinish() {
+                                        countdownTextView.visibility = View.GONE
+                                        try {
+                                            mediaRecorder?.start()
+                                            isRecording = true
+                                            runOnUiThread {
+                                                recordButton.text = "停止"
+                                                recordButton.isEnabled = true
+                                                timerTextView.visibility = View.VISIBLE
+                                                setGainInputsEnabled(false)
+                                                startTime = System.currentTimeMillis()
+                                                timerHandler.post(timerRunnable)
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "MediaRecorder start failed after countdown", e)
+                                        }
+                                    }
+                                }.start()
                             }
                         } catch (e: Exception) {
-                            Log.e(TAG, "开始录制请求失败", e)
+                            Log.e(TAG, "设置录制会话失败", e)
                         }
                     }
 
@@ -244,8 +264,6 @@ class MainActivity : AppCompatActivity() {
                 addTarget(previewSurface)
                 applyColorCorrection(this)
                 set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
-
-                // --- 新增功能：为预览设置 30 FPS ---
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
             }
 
@@ -436,7 +454,7 @@ class MainActivity : AppCompatActivity() {
         override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean = true
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
-    }11
+    }
 
     override fun onResume() {
         super.onResume()
