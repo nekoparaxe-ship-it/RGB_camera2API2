@@ -36,7 +36,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class MainActivity : AppCompatActivity() {
+class 1MainActivity : AppCompatActivity() {
 
     // --- UI 控件 ---
     private lateinit var textureView: TextureView
