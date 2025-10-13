@@ -119,7 +119,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // --- 新增：为增益预设按钮添加点击事件 ---
         noGainButton.setOnClickListener {
             redGainInput.setText("1.0")
             greenGainInput.setText("1.0")
@@ -164,6 +163,9 @@ class MainActivity : AppCompatActivity() {
                 addTarget(previewSurface)
                 addTarget(recordSurface)
                 applyColorCorrection(this)
+
+                // --- 新增功能：将帧率目标设为 30 FPS ---
+                set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
 
                 val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
                 val flashAvailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
@@ -242,6 +244,9 @@ class MainActivity : AppCompatActivity() {
                 addTarget(previewSurface)
                 applyColorCorrection(this)
                 set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+
+                // --- 新增功能：为预览设置 30 FPS ---
+                set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
             }
 
             cameraDevice!!.createCaptureSession(listOf(previewSurface),
@@ -250,7 +255,7 @@ class MainActivity : AppCompatActivity() {
                         captureSession = session
                         try {
                             session.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
-                            runOnUiThread { recordButton.text = "录制" }
+                            runOnUiThread { recordButton.text = "录制\nRecord" }
                         } catch (e: Exception) {
                             Log.e(TAG, "启动预览失败", e)
                         }
@@ -383,7 +388,6 @@ class MainActivity : AppCompatActivity() {
         redGainInput.isEnabled = enabled
         greenGainInput.isEnabled = enabled
         blueGainInput.isEnabled = enabled
-        // --- 新增：同时控制按钮的可用状态 ---
         noGainButton.isEnabled = enabled
         resetGainButton.isEnabled = enabled
     }
