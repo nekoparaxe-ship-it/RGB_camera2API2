@@ -50,6 +50,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var redGainInput: EditText
     private lateinit var greenGainInput: EditText
     private lateinit var blueGainInput: EditText
+    private lateinit var noGainButton: Button
+    private lateinit var resetGainButton: Button
+
 
     // --- 相机相关变量 ---
     private lateinit var cameraManager: CameraManager
@@ -104,6 +107,9 @@ class MainActivity : AppCompatActivity() {
         redGainInput = findViewById(R.id.red_gain_input)
         greenGainInput = findViewById(R.id.green_gain_input)
         blueGainInput = findViewById(R.id.blue_gain_input)
+        noGainButton = findViewById(R.id.no_gain_button)
+        resetGainButton = findViewById(R.id.reset_gain_button)
+
 
         recordButton.setOnClickListener {
             if (isRecording) {
@@ -113,13 +119,26 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // --- 新增：监听输入框变化，实时更新预览 ---
+        // --- 新增：为增益预设按钮添加点击事件 ---
+        noGainButton.setOnClickListener {
+            redGainInput.setText("1.0")
+            greenGainInput.setText("1.0")
+            blueGainInput.setText("1.0")
+        }
+
+        resetGainButton.setOnClickListener {
+            redGainInput.setText("1.0")
+            greenGainInput.setText("3.0")
+            blueGainInput.setText("18.0")
+        }
+
+
         val textWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 if (!isRecording) {
-                    startPreview() // 如果不在录制中，则重新启动预览以应用新的增益
+                    startPreview()
                 }
             }
         }
@@ -168,7 +187,7 @@ class MainActivity : AppCompatActivity() {
                             runOnUiThread {
                                 recordButton.text = "停止"
                                 timerTextView.visibility = View.VISIBLE
-                                setGainInputsEnabled(false) // 录制时禁用输入框
+                                setGainInputsEnabled(false)
                                 startTime = System.currentTimeMillis()
                                 timerHandler.post(timerRunnable)
                             }
@@ -195,7 +214,7 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             timerTextView.visibility = View.GONE
             timerTextView.text = "00:00"
-            setGainInputsEnabled(true) // 停止录制后启用输入框
+            setGainInputsEnabled(true)
         }
 
         try {
@@ -330,7 +349,6 @@ class MainActivity : AppCompatActivity() {
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF)
         builder.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX)
 
-        // --- 新增：从输入框读取增益值，如果为空或无效则使用默认值 ---
         val redGain = redGainInput.text.toString().toFloatOrNull() ?: 1.0f
         val greenGain = greenGainInput.text.toString().toFloatOrNull() ?: 3.0f
         val blueGain = blueGainInput.text.toString().toFloatOrNull() ?: 18.0f
@@ -365,6 +383,9 @@ class MainActivity : AppCompatActivity() {
         redGainInput.isEnabled = enabled
         greenGainInput.isEnabled = enabled
         blueGainInput.isEnabled = enabled
+        // --- 新增：同时控制按钮的可用状态 ---
+        noGainButton.isEnabled = enabled
+        resetGainButton.isEnabled = enabled
     }
 
     private fun closePreviewSession() {
