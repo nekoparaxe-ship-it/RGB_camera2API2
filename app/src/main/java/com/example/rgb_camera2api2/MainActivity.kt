@@ -4,6 +4,11 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.ImageFormat
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
@@ -12,6 +17,7 @@ import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.params.RggbChannelVector
+import android.media.ImageReader
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -24,6 +30,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.AttributeSet
 import android.util.Log
 import android.util.Range
 import android.util.Size
@@ -43,8 +50,80 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.appbar.MaterialToolbar
 import java.io.IOException
 import java.text.SimpleDateFormat
+import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
+
+// --- 新增：自定义View用于绘制曲线图 ---
+class EcgView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
+
+    private val redPaint = Paint().apply { color = Color.RED; strokeWidth = 3f; style = Paint.Style.STROKE; isAntiAlias = true }
+    private val greenPaint = Paint().apply { color = Color.GREEN; strokeWidth = 3f; style = Paint.Style.STROKE; isAntiAlias = true }
+    private val bluePaint = Paint().apply { color = Color.BLUE; strokeWidth = 3f; style = Paint.Style.STROKE; isAntiAlias = true }
+    private val gridPaint = Paint().apply { color = Color.argb(100, 80, 80, 80); strokeWidth = 1f }
+
+    private val redPath = Path()
+    private val greenPath = Path()
+    private val bluePath = Path()
+
+    private val maxDataPoints = 30 * 10 // 30fps * 10 seconds window
+
+    private val redData = ArrayDeque<Int>(maxDataPoints)
+    private val greenData = ArrayDeque<Int>(maxDataPoints)
+    private val blueData = ArrayDeque<Int>(maxDataPoints)
+
+    fun addDataPoint(r: Int, g: Int, b: Int) {
+        if (redData.size >= maxDataPoints) redData.removeFirst()
+        redData.addLast(r.coerceAtLeast(0)) // 只需保证非负
+
+        if (greenData.size >= maxDataPoints) greenData.removeFirst()
+        greenData.addLast(g.coerceAtLeast(0))
+
+        if (blueData.size >= maxDataPoints) blueData.removeFirst()
+        blueData.addLast(b.coerceAtLeast(0))
+
+        postInvalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+
+        // Draw grid
+        for (i in 1..4) {
+            val y = height * (i / 5f)
+            canvas.drawLine(0f, y, width.toFloat(), y, gridPaint)
+        }
+
+        // --- 关键修复：动态计算Y轴最大值 ---
+        val maxR = redData.maxOrNull() ?: 0
+        val maxG = greenData.maxOrNull() ?: 0
+        val maxB = blueData.maxOrNull() ?: 0
+        val currentMax = maxOf(maxR, maxG, maxB).toFloat()
+        val yMax = currentMax.coerceAtLeast(255f) // 保证最小纵轴为255，避免数值小时图像过大
+
+        drawPath(canvas, redPath, redData, redPaint, yMax)
+        drawPath(canvas, greenPath, greenData, greenPaint, yMax)
+        drawPath(canvas, bluePath, blueData, bluePaint, yMax)
+    }
+
+    private fun drawPath(canvas: Canvas, path: Path, data: ArrayDeque<Int>, paint: Paint, yMax: Float) {
+        path.reset()
+        val stepX = width.toFloat() / (maxDataPoints - 1).coerceAtLeast(1)
+        val scaleY = if (yMax > 0) height / yMax else 0f // 使用动态最大值
+
+        data.forEachIndexed { index, value ->
+            val x = index * stepX
+            val y = height - (value * scaleY)
+            if (index == 0) {
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+        canvas.drawPath(path, paint)
+    }
+}
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -58,6 +137,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var noGainButton: Button
     private lateinit var resetGainButton: Button
     private lateinit var countdownTextView: TextView
+    private lateinit var ecgView: EcgView
 
 
     // --- 相机相关变量 ---
@@ -65,6 +145,7 @@ class MainActivity : AppCompatActivity() {
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
     private var cameraId: String? = null
+    private var imageReader: ImageReader? = null // 新增
 
     // --- 线程管理 ---
     private var backgroundHandler: Handler? = null
@@ -119,6 +200,7 @@ class MainActivity : AppCompatActivity() {
         noGainButton = findViewById(R.id.no_gain_button)
         resetGainButton = findViewById(R.id.reset_gain_button)
         countdownTextView = findViewById(R.id.countdown_text)
+        ecgView = findViewById(R.id.ecg_view)
 
 
         recordButton.setOnClickListener {
@@ -147,7 +229,7 @@ class MainActivity : AppCompatActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 if (!isRecording) {
-                    startPreview()
+                    // 不需要重启预览，因为ImageReader会持续获取数据并应用新增益
                 }
             }
         }
@@ -188,6 +270,7 @@ class MainActivity : AppCompatActivity() {
             val captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
                 addTarget(previewSurface)
                 addTarget(recordSurface)
+                addTarget(imageReader!!.surface) // 新增
                 applyColorCorrection(this)
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
 
@@ -202,7 +285,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            cameraDevice!!.createCaptureSession(listOf(previewSurface, recordSurface),
+            cameraDevice!!.createCaptureSession(listOf(previewSurface, recordSurface, imageReader!!.surface),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         captureSession = session
@@ -284,12 +367,13 @@ class MainActivity : AppCompatActivity() {
             val previewSurface = Surface(texture)
             val captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(previewSurface)
+                addTarget(imageReader!!.surface) // 新增
                 applyColorCorrection(this)
                 set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
             }
 
-            cameraDevice!!.createCaptureSession(listOf(previewSurface),
+            cameraDevice!!.createCaptureSession(listOf(previewSurface, imageReader!!.surface),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         captureSession = session
@@ -369,6 +453,12 @@ class MainActivity : AppCompatActivity() {
             }
             cameraId = compatibleCameraId
 
+            // --- 新增：初始化 ImageReader ---
+            imageReader = ImageReader.newInstance(1, 1, ImageFormat.YUV_420_888, 1).apply {
+                setOnImageAvailableListener(onImageAvailableListener, backgroundHandler)
+            }
+
+
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
             cameraManager.openCamera(cameraId!!, cameraStateCallback, backgroundHandler)
         } catch (e: CameraAccessException) {
@@ -388,6 +478,36 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "相机设备错误: $error")
             closeCamera()
         }
+    }
+
+    // --- 新增：ImageReader 监听器，用于处理像素数据 ---
+    private val onImageAvailableListener = ImageReader.OnImageAvailableListener { reader ->
+        val image = reader.acquireLatestImage() ?: return@OnImageAvailableListener
+        val planes = image.planes
+        val yBuffer = planes[0].buffer
+        val uBuffer = planes[1].buffer
+        val vBuffer = planes[2].buffer
+
+        val y = yBuffer.get().toInt() and 0xFF
+        val u = uBuffer.get().toInt() and 0xFF
+        val v = vBuffer.get().toInt() and 0xFF
+
+        image.close()
+
+        // YUV to RGB conversion
+        val r = (y + 1.370705f * (v - 128)).toInt()
+        val g = (y - 0.698001f * (v - 128) - 0.337633f * (u - 128)).toInt()
+        val b = (y + 1.732446f * (u - 128)).toInt()
+
+        val redGain = redGainInput.text.toString().toFloatOrNull() ?: 1.0f
+        val greenGain = greenGainInput.text.toString().toFloatOrNull() ?: 3.0f
+        val blueGain = blueGainInput.text.toString().toFloatOrNull() ?: 18.0f
+
+        val finalR = (r * redGain).toInt()
+        val finalG = (g * greenGain).toInt()
+        val finalB = (b * blueGain).toInt()
+
+        ecgView.addDataPoint(finalR, finalG, finalB)
     }
 
     private fun applyColorCorrection(builder: CaptureRequest.Builder) {
@@ -477,6 +597,8 @@ class MainActivity : AppCompatActivity() {
         cameraDevice = null
         mediaRecorder?.release()
         mediaRecorder = null
+        imageReader?.close() // 新增
+        imageReader = null
     }
 
     private fun startBackgroundThread() {
