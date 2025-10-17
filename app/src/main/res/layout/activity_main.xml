@@ -4,49 +4,57 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF373737"
+    android:background="#FF111111"
     android:fitsSystemWindows="true"
     tools:context=".MainActivity">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/app_bar_layout"
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/top_toolbar"
         android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:layout_constraintTop_toTopOf="parent"
+        app:title="@string/app_name"
+        app:titleTextColor="@android:color/white" />
+
+    <TextView
+        android:id="@+id/spo2_text_view"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/top_toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:title="@string/app_name"
-            app:titleTextColor="@android:color/white" />
-
-    </com.google.android.material.appbar.AppBarLayout>
+        android:layout_marginTop="8dp"
+        android:text="SpO2: --%"
+        android:textColor="@android:color/white"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/top_toolbar" />
 
     <LinearLayout
-        android:id="@+id/gain_controls_container"
+        android:id="@+id/gain_controls"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="#55000000"
-        android:orientation="vertical"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:background="#80512DA8"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
         android:padding="8dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/app_bar_layout">
+        app:layout_constraintTop_toBottomOf="@id/spo2_text_view">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="horizontal">
+            android:layout_weight="1"
+            android:orientation="vertical">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/no_gain_button"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="4dp"
-                android:layout_weight="1"
                 android:text="无增益\nNo Gain"
                 android:textColor="@android:color/white"
                 app:strokeColor="@android:color/white" />
@@ -54,72 +62,61 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/reset_gain_button"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_weight="1"
-                android:text="重置增益\nReset"
+                android:layout_marginTop="4dp"
+                android:text="重置增益\nReset Gain"
                 android:textColor="@android:color/white"
                 app:strokeColor="@android:color/white" />
-
         </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <EditText
+            android:id="@+id/red_gain_input"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
+            android:layout_marginStart="8dp"
+            android:layout_weight="0.6"
+            android:gravity="center"
+            android:hint="R"
+            android:inputType="numberDecimal"
+            android:textColor="@android:color/white"
+            android:textColorHint="#99FFFFFF" />
 
-            <EditText
-                android:id="@+id/red_gain_input"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:backgroundTint="#AFAFAF"
-                android:gravity="center"
-                android:hint="R"
-                android:inputType="numberDecimal"
-                android:textColor="@android:color/white"
-                android:textColorHint="#AFAFAF" />
+        <EditText
+            android:id="@+id/green_gain_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="0.6"
+            android:gravity="center"
+            android:hint="G"
+            android:inputType="numberDecimal"
+            android:textColor="@android:color/white"
+            android:textColorHint="#99FFFFFF" />
 
-            <EditText
-                android:id="@+id/green_gain_input"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:backgroundTint="#AFAFAF"
-                android:gravity="center"
-                android:hint="G"
-                android:inputType="numberDecimal"
-                android:textColor="@android:color/white"
-                android:textColorHint="#AFAFAF" />
+        <EditText
+            android:id="@+id/blue_gain_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="0.6"
+            android:gravity="center"
+            android:hint="B"
+            android:inputType="numberDecimal"
+            android:textColor="@android:color/white"
+            android:textColorHint="#99FFFFFF" />
 
-            <EditText
-                android:id="@+id/blue_gain_input"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:backgroundTint="#AFAFAF"
-                android:gravity="center"
-                android:hint="B"
-                android:inputType="numberDecimal"
-                android:textColor="@android:color/white"
-                android:textColorHint="#AFAFAF" />
-        </LinearLayout>
     </LinearLayout>
 
-    <!-- 新增：实时曲线图 -->
-    <view
+    <com.example.rgb_camera2api2.EcgView
         android:id="@+id/ecg_view"
-        class="com.example.rgb_camera2api2.EcgView"
         android:layout_width="0dp"
-        android:layout_height="100dp"
-        android:layout_marginStart="16dp"
+        android:layout_height="80dp"
         android:layout_marginTop="8dp"
-        android:layout_marginEnd="16dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/gain_controls_container" />
+        app:layout_constraintEnd_toEndOf="@id/gain_controls"
+        app:layout_constraintStart_toStartOf="@id/gain_controls"
+        app:layout_constraintTop_toBottomOf="@id/gain_controls" />
+
 
     <TextureView
         android:id="@+id/texture_view"
@@ -138,24 +135,54 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:gravity="center"
-        android:text="在开始录制前请将手指贴紧镜头与闪光灯\n闪光灯开启后设备会强制开启自动ISO\nBefore recording, please place your finger close to the lens and flash\nThe device will force Auto ISO when the flash is on"
-        android:textColor="@android:color/white"
-        app:layout_constraintEnd_toEndOf="@id/texture_view"
-        app:layout_constraintStart_toStartOf="@id/texture_view"
+        android:paddingHorizontal="16dp"
+        android:text="在开始录制前请将手指贴紧镜头与闪光灯\n闪光灯开启后设备会强制开启自动ISO\nBefore recording, press your finger against the lens and flash\nThe device will force Auto ISO when the flash is on"
+        android:textColor="@android:color/holo_orange_light"
+        android:textSize="12sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/texture_view" />
+
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/record_button"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="录制\nRecord"
+        android:textColor="@android:color/white"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:strokeColor="@android:color/white" />
+
+    <!-- 新增：闪光灯按钮 -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/flash_button"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="闪光灯\nFlash"
+        android:textColor="@android:color/white"
+        app:layout_constraintBottom_toBottomOf="@id/record_button"
+        app:layout_constraintEnd_toStartOf="@id/record_button"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/record_button"
+        app:strokeColor="@android:color/white" />
 
     <TextView
         android:id="@+id/timer_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
+        android:layout_margin="16dp"
         android:text="00:00"
-        android:textColor="@android:color/white"
-        android:textSize="24sp"
+        android:textColor="@android:color/holo_red_dark"
+        android:textSize="20sp"
+        android:textStyle="bold"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/record_button"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="@id/texture_view"
+        app:layout_constraintTop_toTopOf="@id/texture_view"
         tools:visibility="visible" />
 
     <TextView
@@ -163,7 +190,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textColor="@android:color/white"
-        android:textSize="80sp"
+        android:textSize="96sp"
         android:textStyle="bold"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/texture_view"
@@ -172,20 +199,6 @@
         app:layout_constraintTop_toTopOf="@id/texture_view"
         tools:text="2"
         tools:visibility="visible" />
-
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/record_button"
-        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="32dp"
-        android:text="录制\nRecord"
-        android:textColor="@android:color/white"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:strokeColor="@android:color/white" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
 

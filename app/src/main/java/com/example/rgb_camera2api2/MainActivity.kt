@@ -48,59 +48,54 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.appbar.MaterialToolbar
+import org.pytorch.IValue
+import org.pytorch.LiteModuleLoader
+import org.pytorch.Module
+import org.pytorch.Tensor
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
+import kotlin.math.max
 
-// --- 新增：自定义View用于绘制曲线图 ---
+// --- 自定义View用于绘制曲线图 ---
 class EcgView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
-
     private val redPaint = Paint().apply { color = Color.RED; strokeWidth = 3f; style = Paint.Style.STROKE; isAntiAlias = true }
     private val greenPaint = Paint().apply { color = Color.GREEN; strokeWidth = 3f; style = Paint.Style.STROKE; isAntiAlias = true }
     private val bluePaint = Paint().apply { color = Color.BLUE; strokeWidth = 3f; style = Paint.Style.STROKE; isAntiAlias = true }
     private val gridPaint = Paint().apply { color = Color.argb(100, 80, 80, 80); strokeWidth = 1f }
-
     private val redPath = Path()
     private val greenPath = Path()
     private val bluePath = Path()
-
-    private val maxDataPoints = 30 * 10 // 30fps * 10 seconds window
-
+    private val maxDataPoints = 30 * 10
     private val redData = ArrayDeque<Int>(maxDataPoints)
     private val greenData = ArrayDeque<Int>(maxDataPoints)
     private val blueData = ArrayDeque<Int>(maxDataPoints)
 
     fun addDataPoint(r: Int, g: Int, b: Int) {
         if (redData.size >= maxDataPoints) redData.removeFirst()
-        redData.addLast(r.coerceAtLeast(0)) // 只需保证非负
-
+        redData.addLast(r.coerceAtLeast(0))
         if (greenData.size >= maxDataPoints) greenData.removeFirst()
         greenData.addLast(g.coerceAtLeast(0))
-
         if (blueData.size >= maxDataPoints) blueData.removeFirst()
         blueData.addLast(b.coerceAtLeast(0))
-
         postInvalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-
-        // Draw grid
         for (i in 1..4) {
             val y = height * (i / 5f)
             canvas.drawLine(0f, y, width.toFloat(), y, gridPaint)
         }
-
-        // --- 关键修复：动态计算Y轴最大值 ---
         val maxR = redData.maxOrNull() ?: 0
         val maxG = greenData.maxOrNull() ?: 0
         val maxB = blueData.maxOrNull() ?: 0
         val currentMax = maxOf(maxR, maxG, maxB).toFloat()
-        val yMax = currentMax.coerceAtLeast(255f) // 保证最小纵轴为255，避免数值小时图像过大
-
+        val yMax = currentMax.coerceAtLeast(255f)
         drawPath(canvas, redPath, redData, redPaint, yMax)
         drawPath(canvas, greenPath, greenData, greenPaint, yMax)
         drawPath(canvas, bluePath, blueData, bluePaint, yMax)
@@ -109,16 +104,11 @@ class EcgView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
     private fun drawPath(canvas: Canvas, path: Path, data: ArrayDeque<Int>, paint: Paint, yMax: Float) {
         path.reset()
         val stepX = width.toFloat() / (maxDataPoints - 1).coerceAtLeast(1)
-        val scaleY = if (yMax > 0) height / yMax else 0f // 使用动态最大值
-
+        val scaleY = if (yMax > 0) height / yMax else 0f
         data.forEachIndexed { index, value ->
             val x = index * stepX
             val y = height - (value * scaleY)
-            if (index == 0) {
-                path.moveTo(x, y)
-            } else {
-                path.lineTo(x, y)
-            }
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         canvas.drawPath(path, paint)
     }
@@ -128,6 +118,7 @@ class EcgView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
 class MainActivity : AppCompatActivity() {
 
     // --- UI 控件 ---
+    private lateinit var spo2TextView: TextView
     private lateinit var textureView: TextureView
     private lateinit var recordButton: Button
     private lateinit var timerTextView: TextView
@@ -138,6 +129,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var resetGainButton: Button
     private lateinit var countdownTextView: TextView
     private lateinit var ecgView: EcgView
+    private lateinit var flashButton: Button // 新增
 
 
     // --- 相机相关变量 ---
@@ -145,17 +137,24 @@ class MainActivity : AppCompatActivity() {
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
     private var cameraId: String? = null
-    private var imageReader: ImageReader? = null // 新增
+    private var imageReader: ImageReader? = null
 
     // --- 线程管理 ---
     private var backgroundHandler: Handler? = null
     private var backgroundThread: HandlerThread? = null
 
-    // --- 录制相关 ---
+    // --- 状态变量 ---
     private var isRecording = false
+    private var isFlashlightOn = false // 新增
     private var mediaRecorder: MediaRecorder? = null
     private val videoSize = Size(176, 144)
     private var videoUri: Uri? = null
+
+    // --- 模型相关 ---
+    private var module: Module? = null
+    private val signalBuffer = ArrayDeque<FloatArray>()
+    private val MODEL_INPUT_LENGTH = 90
+
 
     // --- 计时器相关变量 ---
     private val timerHandler = Handler(Looper.getMainLooper())
@@ -171,7 +170,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- 常量 ---
     private val TAG = "Camera2App"
 
     private val activityResultLauncher =
@@ -191,6 +189,7 @@ class MainActivity : AppCompatActivity() {
         val toolbar = findViewById<MaterialToolbar>(R.id.top_toolbar)
         setSupportActionBar(toolbar)
 
+        spo2TextView = findViewById(R.id.spo2_text_view)
         textureView = findViewById(R.id.texture_view)
         recordButton = findViewById(R.id.record_button)
         timerTextView = findViewById(R.id.timer_text)
@@ -201,6 +200,9 @@ class MainActivity : AppCompatActivity() {
         resetGainButton = findViewById(R.id.reset_gain_button)
         countdownTextView = findViewById(R.id.countdown_text)
         ecgView = findViewById(R.id.ecg_view)
+        flashButton = findViewById(R.id.flash_button)
+
+        ecgView.visibility = View.VISIBLE
 
 
         recordButton.setOnClickListener {
@@ -210,6 +212,15 @@ class MainActivity : AppCompatActivity() {
                 startRecordingVideo()
             }
         }
+
+        // --- 新增：闪光灯按钮点击事件 ---
+        flashButton.setOnClickListener {
+            if (!isRecording) {
+                isFlashlightOn = !isFlashlightOn
+                startPreview() // 重新启动预览以应用闪光灯状态
+            }
+        }
+
 
         noGainButton.setOnClickListener {
             redGainInput.setText("1.0")
@@ -227,15 +238,38 @@ class MainActivity : AppCompatActivity() {
         val textWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                if (!isRecording) {
-                    // 不需要重启预览，因为ImageReader会持续获取数据并应用新增益
-                }
-            }
+            override fun afterTextChanged(s: Editable?) {}
         }
         redGainInput.addTextChangedListener(textWatcher)
         greenGainInput.addTextChangedListener(textWatcher)
         blueGainInput.addTextChangedListener(textWatcher)
+
+        try {
+            module = LiteModuleLoader.load(assetFilePath(this, "oximeter_model.ptl"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading model file", e)
+            Toast.makeText(this, "无法加载模型: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            finish()
+        }
+    }
+
+    @Throws(IOException::class)
+    fun assetFilePath(context: Context, assetName: String): String {
+        val file = File(context.filesDir, assetName)
+        if (file.exists() && file.length() > 0) {
+            return file.absolutePath
+        }
+        context.assets.open(assetName).use { `is` ->
+            FileOutputStream(file).use { os ->
+                val buffer = ByteArray(4 * 1024)
+                var read: Int
+                while (`is`.read(buffer).also { read = it } != -1) {
+                    os.write(buffer, 0, read)
+                }
+                os.flush()
+            }
+            return file.absolutePath
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -253,7 +287,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
     private fun startRecordingVideo() {
         if (cameraDevice == null || !textureView.isAvailable) return
 
@@ -270,7 +303,7 @@ class MainActivity : AppCompatActivity() {
             val captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
                 addTarget(previewSurface)
                 addTarget(recordSurface)
-                addTarget(imageReader!!.surface) // 新增
+                addTarget(imageReader!!.surface)
                 applyColorCorrection(this)
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
 
@@ -308,7 +341,7 @@ class MainActivity : AppCompatActivity() {
                                                 recordButton.text = "停止"
                                                 recordButton.isEnabled = true
                                                 timerTextView.visibility = View.VISIBLE
-                                                setGainInputsEnabled(false)
+                                                setInputsEnabled(false)
                                                 startTime = System.currentTimeMillis()
                                                 timerHandler.post(timerRunnable)
                                             }
@@ -341,7 +374,7 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             timerTextView.visibility = View.GONE
             timerTextView.text = "00:00"
-            setGainInputsEnabled(true)
+            setInputsEnabled(true)
         }
 
         try {
@@ -352,6 +385,8 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "停止录制器时出错", e)
         }
+
+        isFlashlightOn = false // 录制结束后重置闪光灯状态
 
         saveVideoToGallery()
         startPreview()
@@ -367,9 +402,20 @@ class MainActivity : AppCompatActivity() {
             val previewSurface = Surface(texture)
             val captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(previewSurface)
-                addTarget(imageReader!!.surface) // 新增
+                addTarget(imageReader!!.surface)
                 applyColorCorrection(this)
-                set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+
+                // --- 修改：根据 isFlashlightOn 状态设置闪光灯 ---
+                val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
+                if (characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true) {
+                    if (isFlashlightOn) {
+                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                        set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
+                    } else {
+                        set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+                    }
+                }
+
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
             }
 
@@ -453,11 +499,9 @@ class MainActivity : AppCompatActivity() {
             }
             cameraId = compatibleCameraId
 
-            // --- 新增：初始化 ImageReader ---
-            imageReader = ImageReader.newInstance(1, 1, ImageFormat.YUV_420_888, 1).apply {
+            imageReader = ImageReader.newInstance(videoSize.width, videoSize.height, ImageFormat.YUV_420_888, 2).apply {
                 setOnImageAvailableListener(onImageAvailableListener, backgroundHandler)
             }
-
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
             cameraManager.openCamera(cameraId!!, cameraStateCallback, backgroundHandler)
@@ -480,34 +524,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- 新增：ImageReader 监听器，用于处理像素数据 ---
     private val onImageAvailableListener = ImageReader.OnImageAvailableListener { reader ->
         val image = reader.acquireLatestImage() ?: return@OnImageAvailableListener
-        val planes = image.planes
-        val yBuffer = planes[0].buffer
-        val uBuffer = planes[1].buffer
-        val vBuffer = planes[2].buffer
 
-        val y = yBuffer.get().toInt() and 0xFF
-        val u = uBuffer.get().toInt() and 0xFF
-        val v = vBuffer.get().toInt() and 0xFF
+        try {
+            val planes = image.planes
+            val yBuffer = planes[0].buffer.asReadOnlyBuffer()
+            val uBuffer = planes[1].buffer.asReadOnlyBuffer()
+            val vBuffer = planes[2].buffer.asReadOnlyBuffer()
+            var ySum = 0L; var uSum = 0L; var vSum = 0L
+            yBuffer.rewind(); uBuffer.rewind(); vBuffer.rewind()
+            for (i in 0 until yBuffer.remaining()) ySum += yBuffer.get().toInt() and 0xFF
+            for (i in 0 until uBuffer.remaining()) uSum += uBuffer.get().toInt() and 0xFF
+            for (i in 0 until vBuffer.remaining()) vSum += vBuffer.get().toInt() and 0xFF
 
-        image.close()
+            val yAvg = (ySum / max(1, yBuffer.capacity())).toInt()
+            val uAvg = (uSum / max(1, uBuffer.capacity())).toInt()
+            val vAvg = (vSum / max(1, vBuffer.capacity())).toInt()
 
-        // YUV to RGB conversion
-        val r = (y + 1.370705f * (v - 128)).toInt()
-        val g = (y - 0.698001f * (v - 128) - 0.337633f * (u - 128)).toInt()
-        val b = (y + 1.732446f * (u - 128)).toInt()
+            val r = (yAvg + 1.370705f * (vAvg - 128))
+            val g = (yAvg - 0.698001f * (vAvg - 128) - 0.337633f * (uAvg - 128))
+            val b = (yAvg + 1.732446f * (uAvg - 128))
 
-        val redGain = redGainInput.text.toString().toFloatOrNull() ?: 1.0f
-        val greenGain = greenGainInput.text.toString().toFloatOrNull() ?: 3.0f
-        val blueGain = blueGainInput.text.toString().toFloatOrNull() ?: 18.0f
+            signalBuffer.addLast(floatArrayOf(r, g, b))
+            if (signalBuffer.size > MODEL_INPUT_LENGTH) {
+                signalBuffer.removeFirst()
+            }
 
-        val finalR = (r * redGain).toInt()
-        val finalG = (g * greenGain).toInt()
-        val finalB = (b * blueGain).toInt()
+            val redGain = redGainInput.text.toString().toFloatOrNull() ?: 1.0f
+            val greenGain = greenGainInput.text.toString().toFloatOrNull() ?: 3.0f
+            val blueGain = blueGainInput.text.toString().toFloatOrNull() ?: 18.0f
+            runOnUiThread {
+                ecgView.addDataPoint((r * redGain).toInt(), (g * greenGain).toInt(), (b * blueGain).toInt())
+            }
 
-        ecgView.addDataPoint(finalR, finalG, finalB)
+            if (signalBuffer.size == MODEL_INPUT_LENGTH) {
+                val inputFloatArray = FloatArray(3 * MODEL_INPUT_LENGTH)
+                signalBuffer.forEachIndexed { index, rgb ->
+                    inputFloatArray[index] = rgb[0]
+                    inputFloatArray[MODEL_INPUT_LENGTH + index] = rgb[1]
+                    inputFloatArray[2 * MODEL_INPUT_LENGTH + index] = rgb[2]
+                }
+                val inputTensor = Tensor.fromBlob(inputFloatArray, longArrayOf(1, 3, MODEL_INPUT_LENGTH.toLong()))
+
+                val outputTensor = module?.forward(IValue.from(inputTensor))?.toTensor()
+                val scores = outputTensor?.dataAsFloatArray
+
+                if (scores != null && scores.isNotEmpty()) {
+                    val rawSpo2Value = scores[0]
+                    val adjustedSpo2 = rawSpo2Value / 2.7f
+                    val clampedSpo2 = adjustedSpo2.coerceIn(0.0f, 100.0f)
+                    runOnUiThread {
+                        spo2TextView.text = "SpO2: %.1f%%".format(clampedSpo2)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "模型推理或数据处理失败", e)
+        } finally {
+            image.close()
+        }
     }
 
     private fun applyColorCorrection(builder: CaptureRequest.Builder) {
@@ -544,12 +620,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setGainInputsEnabled(enabled: Boolean) {
+    private fun setInputsEnabled(enabled: Boolean) {
         redGainInput.isEnabled = enabled
         greenGainInput.isEnabled = enabled
         blueGainInput.isEnabled = enabled
         noGainButton.isEnabled = enabled
         resetGainButton.isEnabled = enabled
+        flashButton.isEnabled = enabled // 新增
     }
 
     private fun showManualDialog() {
@@ -597,7 +674,7 @@ class MainActivity : AppCompatActivity() {
         cameraDevice = null
         mediaRecorder?.release()
         mediaRecorder = null
-        imageReader?.close() // 新增
+        imageReader?.close()
         imageReader = null
     }
 
