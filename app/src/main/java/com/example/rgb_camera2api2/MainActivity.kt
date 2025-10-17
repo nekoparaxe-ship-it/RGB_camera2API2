@@ -27,18 +27,20 @@ import android.text.TextWatcher
 import android.util.Log
 import android.util.Range
 import android.util.Size
+import android.view.Menu
+import android.view.MenuItem
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.google.android.material.appbar.MaterialToolbar
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -56,7 +58,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var noGainButton: Button
     private lateinit var resetGainButton: Button
     private lateinit var countdownTextView: TextView
-    private lateinit var manualButton: ImageButton // 新增
 
 
     // --- 相机相关变量 ---
@@ -106,6 +107,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        val toolbar = findViewById<MaterialToolbar>(R.id.top_toolbar)
+        setSupportActionBar(toolbar)
+
         textureView = findViewById(R.id.texture_view)
         recordButton = findViewById(R.id.record_button)
         timerTextView = findViewById(R.id.timer_text)
@@ -115,7 +119,6 @@ class MainActivity : AppCompatActivity() {
         noGainButton = findViewById(R.id.no_gain_button)
         resetGainButton = findViewById(R.id.reset_gain_button)
         countdownTextView = findViewById(R.id.countdown_text)
-        manualButton = findViewById(R.id.manual_button) // 初始化
 
 
         recordButton.setOnClickListener {
@@ -138,10 +141,6 @@ class MainActivity : AppCompatActivity() {
             blueGainInput.setText("18.0")
         }
 
-        manualButton.setOnClickListener {
-            showManualDialog()
-        }
-
 
         val textWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -156,6 +155,22 @@ class MainActivity : AppCompatActivity() {
         greenGainInput.addTextChangedListener(textWatcher)
         blueGainInput.addTextChangedListener(textWatcher)
     }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.top_app_bar_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_manual -> {
+                showManualDialog()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
 
     private fun startRecordingVideo() {
         if (cameraDevice == null || !textureView.isAvailable) return
