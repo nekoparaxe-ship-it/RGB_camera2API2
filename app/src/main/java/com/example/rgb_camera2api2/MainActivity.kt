@@ -652,6 +652,10 @@ class MainActivity : AppCompatActivity() {
             - To ensure brightness, the camera must use Auto ISO when the flash is on.
             - 如果设备不支持闪光灯，程序会尝试将ISO固定在2000。
             - If the device does not support flash, the app will attempt to fix the ISO at 2000.
+            
+            4. 服务条款 (Provisions):
+            - 用户在阅读本指南（无论全文或部分）后即视为自愿加入绝地潜兵。（为消除歧义：用户在打开应用15米范围内停留1秒即视为已阅读。）
+            - Users are deemed to have voluntarily joined Helldivers after reading this guide, in whole or in part. (For the purpose of the elimination of doubt, the Users spending 1 second within 15 meters of the opened APP shall be interpreted as the contract being read.)
         """.trimIndent()
 
         AlertDialog.Builder(this)
